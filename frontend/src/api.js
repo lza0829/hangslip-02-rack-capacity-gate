@@ -42,6 +42,7 @@ export const api = {
   隔离列表: () => req("/隔离"),
   日闸今日: () => req("/日闸/今日"),
   日闸列表: () => req("/日闸"),
+  日闸预检: () => req("/日闸/预检"),
   结案: (body) => req("/日闸/结案", { method: "POST", body: JSON.stringify(body) }),
   设置: () => req("/设置"),
 };

@@ -44,6 +44,33 @@ export default function Home() {
       <div className="msg">{err}</div>
       {d && (
         <section className="panel">
+          <h3>门店衣架占用</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>代号</th>
+                <th>名称</th>
+                <th>占用</th>
+                <th>额定</th>
+                <th>剩余</th>
+              </tr>
+            </thead>
+            <tbody>
+              {d.门店占用.map((s) => (
+                <tr key={s.code}>
+                  <td>{s.code}</td>
+                  <td>{s.name}</td>
+                  <td>{s.占用}</td>
+                  <td>{s.额定}</td>
+                  <td>{s.剩余}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+      {d && (
+        <section className="panel">
           <h3>工序分布</h3>
           <table>
             <thead>

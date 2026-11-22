@@ -21,7 +21,9 @@ export default function Stores() {
           <tr>
             <th>代号</th>
             <th>名称</th>
-            <th>衣架轨数</th>
+            <th>额定格位</th>
+            <th>已占</th>
+            <th>剩余</th>
             <th>状态</th>
           </tr>
         </thead>
@@ -30,8 +32,13 @@ export default function Stores() {
             <tr key={r.code}>
               <td>{r.code}</td>
               <td>{r.name}</td>
-              <td>{r.rack_count}</td>
-              <td>{r.active ? "在用" : "停用"}</td>
+              <td>{r.额定}</td>
+              <td>{r.占用}</td>
+              <td>{r.剩余}</td>
+              <td>
+                {r.active ? "在用" : "停用"}{" "}
+                {r.已满 && <span className="badge 已满">已满</span>}
+              </td>
             </tr>
           ))}
         </tbody>

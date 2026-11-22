@@ -4,6 +4,7 @@ import { api } from "../api";
 export default function Intake() {
   const [stores, setStores] = useState([]);
   const [msg, setMsg] = useState("");
+  const [ok, setOk] = useState(false);
   const [form, setForm] = useState({
     ticket_no: "",
     store_code: "",
@@ -15,16 +16,27 @@ export default function Intake() {
     qty: 1,
   });
 
+  async function loadStores() {
+    const rows = await api.门店();
+    const active = rows.filter((s) => s.active);
+    setStores(active);
+    setForm((f) =>
+      f.store_code && active.some((s) => s.code === f.store_code)
+        ? f
+        : { ...f, store_code: active[0]?.code || "" }
+    );
+  }
+
   useEffect(() => {
-    api.门店().then((rows) => {
-      setStores(rows.filter((s) => s.active));
-      if (rows[0]) setForm((f) => ({ ...f, store_code: rows[0].code }));
-    });
+    loadStores().catch((e) => setMsg(e.message));
   }, []);
+
+  const cur = stores.find((s) => s.code === form.store_code);
 
   async function submit(e) {
     e.preventDefault();
     setMsg("");
+    setOk(false);
     try {
       const row = await api.开票({
         ticket_no: form.ticket_no,
@@ -35,17 +47,29 @@ export default function Intake() {
         note: form.note,
         items: [{ garment: form.garment, qty: Number(form.qty), remark: "" }],
       });
-      setMsg(`已开票 ${row.ticket_no}，状态 ${row.status}`);
+      const occ = row.门店占用;
+      setOk(true);
+      setMsg(
+        `已开票 ${row.ticket_no}，状态 ${row.status}；本店占用 ${occ.占用}/${occ.额定}，余 ${occ.剩余}`
+      );
       setForm((f) => ({ ...f, ticket_no: "", pickup_code: "", customer_name: "", note: "" }));
     } catch (err) {
       setMsg(err.message);
     }
+    // 无论成败都重拉占用，保证入口显示的格子数与写入侧谓词一致
+    loadStores().catch(() => {});
   }
 
   return (
     <section className="panel">
       <h3>收衣开票</h3>
-      <p className="msg">{msg}</p>
+      <p className={ok ? "msg ok" : "msg"}>{msg}</p>
+      {cur && (
+        <p className="msg">
+          当前门店「{cur.name}」占用 {cur.占用}/额定 {cur.额定}，剩余 {cur.剩余} 格
+          {cur.已满 && <span className="badge 已满">已满，开票将被整笔拒绝</span>}
+        </p>
+      )}
       <form onSubmit={submit}>
         <div className="row">
           <input
@@ -60,7 +84,7 @@ export default function Intake() {
           >
             {stores.map((s) => (
               <option key={s.code} value={s.code}>
-                {s.name}
+                {s.name}（{s.占用}/{s.额定}）
               </option>
             ))}
           </select>
@@ -99,7 +123,9 @@ export default function Intake() {
             value={form.note}
             onChange={(e) => setForm({ ...form, note: e.target.value })}
           />
-          <button type="submit">开票贴号</button>
+          <button type="submit" disabled={!cur || cur.已满}>
+            开票贴号
+          </button>
         </div>
       </form>
     </section>

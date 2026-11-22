@@ -9,8 +9,12 @@ def today_str() -> str:
     return date.today().isoformat()
 
 
-def is_day_sealed(day: str | None = None) -> bool:
+def is_day_sealed(day: str | None = None, conn=None) -> bool:
+    """当日是否已结案。传入 conn 时在调用方事务内读取（开票判定用）。"""
     d = day or today_str()
+    if conn is not None:
+        row = conn.execute("SELECT sealed FROM day_gates WHERE day=?", (d,)).fetchone()
+        return bool(row and row["sealed"])
     conn = connect()
     try:
         row = conn.execute("SELECT sealed FROM day_gates WHERE day=?", (d,)).fetchone()
@@ -44,16 +48,3 @@ def seal_day(day: str | None = None, note: str = "") -> dict:
         return dict(conn.execute("SELECT * FROM day_gates WHERE day=?", (d,)).fetchone())
     finally:
         conn.close()
-
-
-def refresh_in_flight(conn) -> int:
-    n = conn.execute(
-        "SELECT COUNT(*) AS c FROM hang_tickets WHERE status NOT IN ('已取','丢失隔离')"
-    ).fetchone()["c"]
-    now = datetime.now().replace(microsecond=0).isoformat(sep=" ")
-    conn.execute(
-        """INSERT INTO watermarks(key, value, updated_at) VALUES ('在途票', ?, ?)
-           ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at""",
-        (n, now),
-    )
-    return n

@@ -4,12 +4,18 @@ import { api } from "../api";
 export default function Gate() {
   const [today, setToday] = useState(null);
   const [rows, setRows] = useState([]);
+  const [pre, setPre] = useState(null);
   const [msg, setMsg] = useState("");
 
   async function load() {
-    const [t, list] = await Promise.all([api.日闸今日(), api.日闸列表()]);
+    const [t, list, p] = await Promise.all([
+      api.日闸今日(),
+      api.日闸列表(),
+      api.日闸预检(),
+    ]);
     setToday(t);
     setRows(list);
+    setPre(p);
   }
 
   useEffect(() => {
@@ -44,6 +50,52 @@ export default function Gate() {
           今日结案
         </button>
       </div>
+      {pre && (
+        <>
+          <h4>结案预检（与开票判定、衣架页同一占用口径）</h4>
+          <div className="row">
+            <div className="metric">
+              <b>{pre.在途水位}</b>
+              <span>在途水位</span>
+            </div>
+            <div className="metric">
+              <b>{pre.占用合计}</b>
+              <span>衣架占用合计</span>
+            </div>
+            <div className="metric">
+              <b>{pre.水位一致 ? "一致" : "不一致"}</b>
+              <span>水位核对</span>
+            </div>
+          </div>
+          {pre.超额门店.length > 0 && (
+            <p className="msg">超额门店：{pre.超额门店.join("、")}</p>
+          )}
+          <table>
+            <thead>
+              <tr>
+                <th>代号</th>
+                <th>名称</th>
+                <th>占用</th>
+                <th>额定</th>
+                <th>剩余</th>
+                <th>状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pre.stores.map((s) => (
+                <tr key={s.code}>
+                  <td>{s.code}</td>
+                  <td>{s.name}</td>
+                  <td>{s.占用}</td>
+                  <td>{s.额定}</td>
+                  <td>{s.剩余}</td>
+                  <td>{s.已满 ? <span className="badge 已满">已满</span> : "可开"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
       <table>
         <thead>
           <tr>

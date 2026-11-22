@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 
 from app.db import connect, init_db
+from app.services import occupancy
 
 
 def seed_if_empty() -> None:
@@ -79,18 +80,8 @@ def seed_if_empty() -> None:
             "INSERT INTO settings(key, value) VALUES ('当前门店', ?)",
             ("店-河西",),
         )
-        conn.execute(
-            "INSERT INTO watermarks(key, value, updated_at) VALUES ('在途票', 0, ?)",
-            (opened,),
-        )
-        # refresh watermark
-        openish = conn.execute(
-            "SELECT COUNT(*) AS c FROM hang_tickets WHERE status NOT IN ('已取','丢失隔离')"
-        ).fetchone()["c"]
-        conn.execute(
-            "UPDATE watermarks SET value=?, updated_at=? WHERE key='在途票'",
-            (openish, opened),
-        )
+        # 水位与开票判定同一谓词，落账审计。
+        occupancy.sync_watermark(conn)
         conn.commit()
     finally:
         conn.close()

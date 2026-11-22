@@ -307,6 +307,12 @@ th {
   color: var(--steam);
 }
 
+.badge.已满 {
+  border-color: rgba(214, 69, 61, 0.55);
+  color: #f0a29d;
+  margin-left: 6px;
+}
+
 .msg {
   margin: 8px 0 14px;
   color: #f0c2a0;

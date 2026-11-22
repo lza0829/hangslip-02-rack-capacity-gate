@@ -5,7 +5,8 @@ from datetime import datetime
 from fastapi import HTTPException
 
 from app.db import FORWARD, connect, transaction
-from app.services.gate import ensure_day_row, is_day_sealed, refresh_in_flight, today_str
+from app.services import occupancy
+from app.services.gate import ensure_day_row, is_day_sealed, today_str
 
 
 def list_tickets(status: str | None = None, store_code: str | None = None) -> list[dict]:
@@ -79,7 +80,11 @@ def create_ticket(payload: dict) -> dict:
 
     now = datetime.now().replace(microsecond=0).isoformat(sep=" ")
     with transaction() as conn:
+        # BEGIN IMMEDIATE：本事务持有写锁，判定占用与写入挂牌被串行化，
+        # 并发抢最后一格不会双破硬闸；任一步失败整笔回滚到开票前。
         ensure_day_row(conn)
+        if is_day_sealed(conn=conn):
+            raise HTTPException(409, "今日已结案，禁止新开挂牌")
         store = conn.execute(
             "SELECT * FROM stores WHERE code=? AND active=1", (store_code,)
         ).fetchone()
@@ -90,6 +95,14 @@ def create_ticket(payload: dict) -> dict:
         ).fetchone()
         if exists:
             raise HTTPException(409, "票号已存在")
+        # 硬闸：额定满则整笔拒。判定用与所有读路径相同的占用谓词。
+        load = occupancy.store_load(conn, store_code)
+        if load["已满"]:
+            raise HTTPException(
+                409,
+                f"门店「{store['name']}」衣架已满：占用{load['占用']}/额定{load['额定']}，"
+                "整笔开票未落账",
+            )
         conn.execute(
             """INSERT INTO hang_tickets
                (ticket_no, store_code, pickup_code, customer_name, status, opened_at, due_date, note)
@@ -110,8 +123,17 @@ def create_ticket(payload: dict) -> dict:
                VALUES (?,?,?,?,?,?)""",
             (ticket_no, None, "已收", payload.get("operator") or "店员", now, "收衣开票"),
         )
-        refresh_in_flight(conn)
-    return get_ticket(ticket_no)
+        occupancy.sync_watermark(conn)
+        # 回执占用：与判定、水位同一谓词，同事务内重放。
+        receipt_load = occupancy.store_load(conn, store_code)
+    data = get_ticket(ticket_no)
+    data["门店占用"] = {
+        "store_code": store_code,
+        "额定": receipt_load["额定"],
+        "占用": receipt_load["占用"],
+        "剩余": receipt_load["剩余"],
+    }
+    return data
 
 
 def advance(ticket_no: str, to_status: str, operator: str = "店员", note: str = "") -> dict:
@@ -141,7 +163,7 @@ def advance(ticket_no: str, to_status: str, operator: str = "店员", note: str 
                VALUES (?,?,?,?,?,?)""",
             (ticket_no, cur, to_status, operator or "店员", now, note or ""),
         )
-        refresh_in_flight(conn)
+        occupancy.sync_watermark(conn)
     return get_ticket(ticket_no)
 
 
@@ -174,7 +196,7 @@ def pickup(ticket_no: str, pickup_code: str, operator: str = "店员") -> dict:
                VALUES (?,?,?,?,?,?)""",
             (ticket_no, "待取", "已取", operator or "店员", now, "取衣核销"),
         )
-        refresh_in_flight(conn)
+        occupancy.sync_watermark(conn)
     return get_ticket(ticket_no)
 
 
@@ -208,5 +230,5 @@ def quarantine(ticket_no: str, kind: str, reason: str, operator: str = "店员")
                VALUES (?,?,?,?,?,?)""",
             (ticket_no, prev, kind, operator or "店员", now, reason or ""),
         )
-        refresh_in_flight(conn)
+        occupancy.sync_watermark(conn)
     return get_ticket(ticket_no)

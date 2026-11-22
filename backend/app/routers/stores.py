@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.db import connect
+from app.services import occupancy
 
 router = APIRouter(tags=["门店"])
 
@@ -16,9 +17,10 @@ class StoreIn(BaseModel):
 
 @router.get("/门店")
 def list_stores():
+    """门店衣架：每店附带同一占用谓词重放出的 额定/占用/剩余/已满。"""
     conn = connect()
     try:
-        return [dict(r) for r in conn.execute("SELECT * FROM stores ORDER BY id").fetchall()]
+        return occupancy.store_loads(conn)
     finally:
         conn.close()
 
@@ -35,8 +37,6 @@ def create_store(body: StoreIn):
             conn.commit()
         except Exception as e:
             raise HTTPException(409, f"门店写入失败：{e}") from e
-        return dict(
-            conn.execute("SELECT * FROM stores WHERE code=?", (body.code.strip(),)).fetchone()
-        )
+        return occupancy.store_load(conn, body.code.strip())
     finally:
         conn.close()
